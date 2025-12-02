@@ -6,7 +6,7 @@ import Peer from "peerjs";
 import { v4 as uuidV4 } from "uuid";
 import { removeStoredData } from "../hooks/useParticipantsStorage";
 
-const WS = "https://69a3c48f4859.ngrok-free.app";
+const WS = "http://localhost:3000";
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const RoomContext = createContext(null);
