@@ -1,26 +1,23 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export default function ManageQueuePage() {
+export default function ManageQueuePage({ queueData }) {
   const nav = useNavigate();
-  const [current, setCurrent] = useState(1);
-  const [ahead, setAhead] = useState(5);
-  const [oneCall, setOneCall] = useState(3);
-  const [next, setNext] = useState(2);
-  const [callingNumber, setCallingNumber] = useState(1);
+  const [current, setCurrent] = useState(queueData.currentQueue);
+  const [ahead, setAhead] = useState(queueData.ahead);
+  const [onCall, setOnCall] = useState(queueData.onCall);
+  const [next, setNext] = useState(queueData.onCall + 1);
 
   const [showPopup, setShowPopup] = useState(false);
 
   const decrementCalling = () => {
-    if (callingNumber > 0) setCallingNumber(callingNumber - 1);
+    if (onCall > 1) setOnCall(onCall - 1);
   };
-
   const incrementCalling = () => {
-    setCallingNumber(callingNumber + 1);
+    setOnCall(onCall + 1);
   };
-
   const handleCloseQueue = () => {
-    setShowPopup(true); // Show confirmation popup
+    setShowPopup(true); 
   };
 
   const confirmClose = () => {
@@ -29,17 +26,15 @@ export default function ManageQueuePage() {
   };
 
   const cancelClose = () => {
-    setShowPopup(false); // Just close popup
+    setShowPopup(false); 
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50 relative">
       <div className="w-full max-w-4xl space-y-8">
-        {/* Page Title */}
         <h1 className="text-3xl sm:text-4xl font-bold text-center text-[#F97316]">
           Manage Queue
         </h1>
-
         {/* Queue Stats */}
         <div className="grid grid-cols-1 gap-4">
           <div className="bg-white rounded-2xl shadow-lg border-2 border-[rgba(13,71,161,0.5)] py-2 px-4 flex justify-between items-center">
@@ -48,15 +43,15 @@ export default function ManageQueuePage() {
           </div>
           <div className="bg-white rounded-2xl shadow-lg border-2 border-[rgba(13,71,161,0.5)] py-2 px-4 flex justify-between items-center">
             <p className="text-gray-600 text-xl">Ahead</p>
-            <p className="text-4xl font-bold text-black">{ahead}</p>
+            <p className="text-4xl font-bold text-black">#{ahead}</p>
           </div>
           <div className="bg-white rounded-2xl shadow-lg border-2 border-[rgba(13,71,161,0.5)] py-2 px-4 flex justify-between items-center">
             <p className="text-gray-600 text-xl">One Call</p>
-            <p className="text-4xl font-bold text-black">{oneCall}</p>
+            <p className="text-4xl font-bold text-black">#{onCall}</p>
           </div>
           <div className="bg-white rounded-2xl shadow-lg border-2 border-[rgba(13,71,161,0.5)] py-2 px-4 flex justify-between items-center">
             <p className="text-gray-600 text-xl">Next</p>
-            <p className="text-4xl font-bold text-black">{next}</p>
+            <p className="text-4xl font-bold text-black">#{onCall+1}</p>
           </div>
         </div>
 
@@ -64,7 +59,7 @@ export default function ManageQueuePage() {
         <div className="bg-white rounded-2xl shadow-lg p-8">
           <div className="flex justify-between items-center mb-6">
             <p className="text-gray-600 text-2xl">On Call</p>
-            <p className="text-5xl font-bold text-[#F97316]">#{callingNumber}</p>
+            <p className="text-5xl font-bold text-[#F97316]">#{onCall}</p>
           </div>
 
           <div className="flex justify-center items-center gap-6">

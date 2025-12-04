@@ -3,7 +3,7 @@ import logo from '../assets/logo.png'
 import qrCode from '../assets/qr-code.png'
 import { useNavigate } from 'react-router-dom';
 
-export default function QRCodePage() {
+export default function QRCodePage({queueData}) {
     const [showPopup, setShowPopup] = useState(false);
     const nav = useNavigate()
 
@@ -32,7 +32,7 @@ export default function QRCodePage() {
                 {/* Queue Name */}
                 <div className="text-center space-y-1">
                     <p className="text-md text-gray-700 font-medium">Queue Name</p>
-                    <p className="text-3xl font-bold text-orange-500 tracking-wide">Flower</p>
+                    <p className="text-3xl font-bold text-orange-500 tracking-wide">{queueData.queueName}</p>
                 </div>
 
                 {/* QR Code */}

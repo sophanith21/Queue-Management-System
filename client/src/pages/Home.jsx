@@ -29,7 +29,8 @@ export default function HomePage() {
           </button>
 
           <button 
-            className="group relative w-full px-8 py-6 bg-white text-black border-2 border-[#F97316] rounded-2xl shadow-lg hover:shadow-xl hover:bg-orange-50 transition-all duration-300 transform hover:-translate-y-1"  
+            className="group relative w-full px-8 py-6 bg-white text-black border-2 border-[#F97316] rounded-2xl shadow-lg hover:shadow-xl hover:bg-orange-50 transition-all duration-300 transform hover:-translate-y-1"
+            onClick={() => navigate('/join')}    
           >
             <div className="flex flex-col items-center justify-center gap-3">
               <div className="p-2 bg-orange-50 rounded-lg group-hover:bg-orange-100 transition-colors">
