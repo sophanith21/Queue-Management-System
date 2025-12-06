@@ -1,23 +1,34 @@
-import React, { useState } from "react";
-import logo from '../assets/logo.png'
-import { useNavigate } from "react-router-dom";
+import { useContext, useState } from "react";
+import logo from "../assets/logo.png";
+import { RoomContext } from "../context/RoomContext";
+
 export default function CreateQueuePage() {
+  // State for form inputs and validation error
   const [queueName, setQueueName] = useState("");
   const [attention, setAttention] = useState("");
   const [error, setError] = useState("");
 
-  const nav = useNavigate()
+  // Access WebSocket connection and user details from context
+  const { ws, userId, dispatch } = useContext(RoomContext);
 
   const handleCreateQueue = () => {
+    // Input validation
     if (!queueName.trim()) {
       setError("Queue name is required");
       return;
     }
+
     setError("");
-    nav('/qr');
+
+    // Update local room context with new queue details
+    dispatch({ type: "set", queueName, attention });
+
+    // Send creation request to the server
+    ws.emit("create-room", { organizerId: userId, queueName, attention });
   };
 
   return (
+    // Main container centered on screen
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-xl p-8">
@@ -28,9 +39,9 @@ export default function CreateQueuePage() {
             </h2>
           </div>
 
-          {/* Form */}
           <div className="space-y-6">
             <div>
+              {/* Queue Name Input */}
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Queue Name*
               </label>
@@ -42,8 +53,10 @@ export default function CreateQueuePage() {
                 required
               />
 
+              {/* Error Message */}
               {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
 
+              {/* Attention Input */}
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Attention (optional)
               </label>
@@ -55,6 +68,7 @@ export default function CreateQueuePage() {
               />
             </div>
 
+            {/* Submit Button */}
             <button
               onClick={handleCreateQueue}
               className="w-full bg-[#F97316] text-white px-8 py-4 rounded-full text-lg font-semibold shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300"

@@ -1,161 +1,194 @@
-import { useEffect, useReducer, useState, useRef } from "react";
-import { createContext } from "react";
+import { useEffect, useReducer, createContext } from "react";
 import { useNavigate } from "react-router-dom";
 import socketIOClient from "socket.io-client";
-import Peer from "peerjs";
 import { v4 as uuidV4 } from "uuid";
-import { removeStoredData } from "../hooks/useParticipantsStorage";
+import {
+  clearLocalQueueData,
+  usePersistentQueue,
+} from "../hooks/useParticipantsStorage";
 
-const WS = "http://localhost:3000";
+// Define the WebSocket server endpoint
+const WS = "https://fc76e4c4b470.ngrok-free.app";
 
+// Create and export the Context for consumer components
 // eslint-disable-next-line react-refresh/only-export-components
 export const RoomContext = createContext(null);
 
+// Initialize the global WebSocket connection (outside the component)
 const ws = socketIOClient(WS, { transports: ["websocket"] });
 
+// --- Reducer Initial State ---
 const initialState = {
+  queueName: "",
+  attention: "",
   participants: [],
   error: null,
+  // Load existing userId from localStorage or generate a new one
+  userId: localStorage.getItem("userId") || uuidV4(),
+  organizerId: null,
+  finalReport: null,
 };
 
+// --- Reducer Function to manage state transitions ---
 const reducer = (state, action) => {
   switch (action.type) {
-    case "add": {
-      let newList = [...state.participants];
-      if (!newList.includes(action.participant)) {
-        newList.push(action.participant);
-      }
-
-      return { participants: newList };
-    }
-    case "remove": {
-      let newList = [...state.participants];
-      if (newList.includes(action.participant)) {
-        newList = newList.filter((e) => e !== action.participant);
-      }
-      return { participants: newList };
-    }
-    case "update":
-      return { ...state, participants: action.participants };
-
+    case "set": // Set initial queue details during creation
+      return {
+        ...state,
+        queueName: action.queueName,
+        attention: action.attention,
+      };
+    case "update_full_state": // Used for general state sync
+      return {
+        ...state,
+        participants: action.participants,
+        queueName: action.queueName,
+        attention: action.attention,
+      };
+    case "update_queue": // Full sync of queue data from server
+      return {
+        ...state,
+        queueName: action.queueName,
+        attention: action.attention,
+        participants: action.participants,
+        organizerId: action.organizerId,
+      };
+    case "set_report": // Store final report data before navigation
+      return {
+        ...state,
+        finalReport: action.payload,
+      };
+    case "clear_state": // Reset main queue state, but preserve userId and report data
+      return {
+        ...initialState,
+        userId: state.userId,
+        finalReport: state.finalReport,
+      };
     default:
-      return { error: "No such Action" };
+      return state;
   }
 };
 
 export const RoomProvider = ({ children }) => {
   const nav = useNavigate();
-  const [user, setUser] = useState({ peer: null, conn: null });
   const [room, dispatch] = useReducer(reducer, initialState);
 
-  const roomRef = useRef(room);
+  // Custom hook to handle state persistence (Local Storage sync)
+  const { clearStorage } = usePersistentQueue(room, dispatch, room.userId);
 
-  const enterRoom = ({ roomId }) => {
-    console.log({ roomId });
-    nav(`/room/${roomId}/organizer`);
+  const userId = room.userId;
+
+  // --- Action Handlers (Emitters) ---
+
+  // Action: Organizer ends the queue
+  const handleEndQueue = (id) => {
+    if (id) {
+      ws.emit("end-and-destroy-room", { roomId: id });
+    }
+
+    clearStorage(); // Clear persistent state
+    dispatch({ type: "clear_state" });
   };
 
-  const joinQueue = ({ peerId }) => {
-    dispatch({ type: "add", participant: peerId });
+  // Action: Organizer moves the queue forward
+  const handleDequeue = (id) => {
+    if (id && room.participants.length > 0) {
+      ws.emit("dequeue-user", { roomId: id });
+    }
   };
 
-  const exitQueue = ({ peerId }) => {
-    dispatch({ type: "remove", participant: peerId });
+  // Action: Participant leaves the queue
+  const handleExitQueue = (id) => {
+    if (id) {
+      ws.emit("exit-queue", { roomId: id, userId });
+    }
+    clearLocalQueueData(room.userId);
+    dispatch({ type: "clear_state" });
+    nav("/home");
   };
 
-  const redirectToRoom = ({ organizerId }) => {
-    console.log("Organizer " + organizerId);
-    const conn = user.peer.connect(organizerId);
-
-    const handler = (data) => {
-      const { participants, type } = data;
-      if (participants) dispatch({ type: "update", participants });
-      if (type === "queue-end") {
-        removeStoredData(dispatch);
-        nav("/");
-      }
-    };
-
-    conn.on("data", handler);
-    conn.on("open", () => {
-      conn.send({ type: "getList" });
-    });
-
-    setUser((prev) => ({ peer: prev.peer, conn: conn }));
-  };
-
-  const broadcastParticipants = () => {
-    const conns = Object.values(user.conn || {});
-    const participants = roomRef.current.participants;
-
-    conns.forEach((conn) => {
-      if (conn && typeof conn.send === "function") {
-        conn.send({ participants });
-      }
-    });
-  };
+  // --- Socket Event Listeners (useEffect) ---
 
   useEffect(() => {
-    roomRef.current = room;
-    if (typeof user.conn === "object") broadcastParticipants();
-  }, [room]);
-
-  useEffect(() => {
-    let userId = localStorage.getItem("userId");
-    if (!userId) {
-      userId = uuidV4();
+    // Persist userId on mount if it's new
+    if (!localStorage.getItem("userId")) {
       localStorage.setItem("userId", userId);
     }
 
-    const peer = new Peer(userId);
+    // Listener: Organizer confirmation after room creation
+    const enterRoom = ({ roomId }) => {
+      nav(`/queue/${roomId}/organizer`);
+    };
+    ws.on("room-created", enterRoom);
 
-    peer.on("open", (id) => {
-      setUser({ peer, conn: null });
-      console.log("Peer ready with ID:", id);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!user.peer) return;
-
-    const handleConnection = (conn) => {
-      console.log("New connection:", conn.peer);
-
-      // store the connection
-      setUser((prev) => ({
-        peer: prev.peer,
-        conn: { ...prev.conn, [conn.peer]: conn },
-      }));
-
-      conn.on("data", (data) => {
-        if (data.type === "getList") {
-          conn.send({ participants: roomRef.current.participants });
-        }
-        if (data.type === "exitQueue") {
-          exitQueue({ peerId: conn.peer });
-        }
+    // Listener: Syncs queue data (participants, name, attention) from server
+    const syncQueueState = ({
+      participants,
+      queueName,
+      attention,
+      organizerId,
+    }) => {
+      dispatch({
+        type: "update_queue",
+        participants,
+        queueName,
+        attention,
+        organizerId,
       });
     };
+    ws.on("update-queue", syncQueueState);
 
-    user.peer.on("connection", handleConnection);
+    // Listener: Receives final report data upon queue closure
+    const handleFinalReport = (data) => {
+      sessionStorage.setItem("final_queue_report", JSON.stringify(data));
+      dispatch({ type: "set_report", payload: data });
 
-    return () => {
-      user.peer.off("connection", handleConnection);
+      clearStorage();
+      dispatch({ type: "clear_state" });
+      nav(`/report/${data.roomId}`);
     };
-  }, [user.peer]);
+    ws.on("final-report-data", handleFinalReport);
 
-  useEffect(() => {
-    if (user.peer) {
-      ws.on("room-created", enterRoom);
+    // Listener: Handles remote queue closure (e.g., organizer ended it)
+    const handleQueueEnded = () => {
+      console.log("Organizer ended the queue. Navigating home.");
+      clearLocalQueueData(room.userId);
+      dispatch({ type: "clear_state" });
+      nav("/home");
+    };
+    ws.on("queue-ended", handleQueueEnded);
 
-      ws.on("user-joined", joinQueue);
+    // Listener: Confirmation that participant has been served (dequeued by organizer)
+    const handleCompletionConfirmation = () => {
+      console.log("You have been served. Navigating home.");
+      clearLocalQueueData(room.userId);
+      dispatch({ type: "clear_state" });
+    };
+    ws.on("queue-completion-confirmation", handleCompletionConfirmation);
 
-      ws.on("redirect-to-room", redirectToRoom);
-    }
-  }, [user.peer]);
+    // --- Cleanup: Remove listeners on unmount/re-render ---
+    return () => {
+      ws.off("room-created", enterRoom);
+      ws.off("update-queue", syncQueueState);
+      ws.off("final-report-data", handleFinalReport);
+      ws.off("queue-ended", handleQueueEnded);
+      ws.off("queue-completion-confirmation", handleCompletionConfirmation);
+    };
+  }, [userId, nav, clearStorage]);
 
   return (
-    <RoomContext.Provider value={{ ws, user, room, dispatch }}>
+    // Provide state and action handlers to the rest of the application
+    <RoomContext.Provider
+      value={{
+        ws,
+        userId,
+        room,
+        dispatch,
+        handleEndQueue,
+        handleDequeue,
+        handleExitQueue,
+      }}
+    >
       {children}
     </RoomContext.Provider>
   );

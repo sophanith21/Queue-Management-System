@@ -1,58 +1,83 @@
 import { useEffect, useRef } from "react";
 
-const STORAGE_KEY = "participants";
-const TIMESTAMP_KEY = "participants_lastSeen";
-
-export const removeStoredData = (dispatch) => {
-  localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem(TIMESTAMP_KEY);
-  localStorage.removeItem("userId");
-  dispatch({ type: "update", participants: [] });
+const GENERIC_STORAGE_KEY = "queue_organizer_state";
+export const clearLocalQueueData = (userId) => {
+  if (userId) {
+    localStorage.removeItem(`${GENERIC_STORAGE_KEY}_${userId}`);
+  }
+  localStorage.removeItem(GENERIC_STORAGE_KEY);
 };
 
-export const useParticipantsStorage = (participants, dispatch) => {
-  const EXPIRY = 5000; // 5 seconds
+const EXPIRY_TIME = 24 * 60 * 60 * 1000;
 
-  const participantsRef = useRef(participants);
-
-  // Keep ref updated
-  useEffect(() => {
-    participantsRef.current = participants;
-  }, [participants]);
-
-  const saveParticipants = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(participantsRef.current));
-    localStorage.setItem(TIMESTAMP_KEY, Date.now().toString());
-  };
-
-  const cleanupParticipants = () => {
-    const lastSeen = parseInt(localStorage.getItem(TIMESTAMP_KEY) || "0", 10);
-    if (Date.now() - lastSeen > EXPIRY) {
-      removeStoredData(dispatch);
-    }
-  };
+export const usePersistentQueue = (currentState, dispatch, userId) => {
+  const SCOPED_STORAGE_KEY = `${GENERIC_STORAGE_KEY}_${userId}`;
+  const isRestoredRef = useRef(false);
 
   useEffect(() => {
-    // Cleanup expired data on mount
-    cleanupParticipants();
+    localStorage.removeItem(GENERIC_STORAGE_KEY);
 
-    // Restore participants from storage
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    if (saved.length > 0) {
-      dispatch({ type: "update", participants: saved });
+    const rawData = localStorage.getItem(SCOPED_STORAGE_KEY);
+    const now = Date.now();
+
+    // If the user is currently a participant, immediately clear any stale organizer data.
+    if (currentState.organizerId && currentState.organizerId !== userId) {
+      localStorage.removeItem(SCOPED_STORAGE_KEY);
+      return;
     }
 
-    // Save on tab close, refresh, or navigate away
-    const handleVisibility = () => {
-      if (document.visibilityState === "hidden") saveParticipants();
+    if (rawData) {
+      try {
+        const { state, timestamp } = JSON.parse(rawData);
+
+        if (now - timestamp < EXPIRY_TIME) {
+          dispatch({
+            type: "update_full_state",
+            participants: state.participants || [],
+            queueName: state.queueName || "",
+            attention: state.attention || "",
+          });
+        } else {
+          localStorage.removeItem(SCOPED_STORAGE_KEY);
+        }
+        // eslint-disable-next-line no-unused-vars
+      } catch (e) {
+        localStorage.removeItem(SCOPED_STORAGE_KEY);
+      }
+    }
+
+    isRestoredRef.current = true;
+  }, [dispatch, userId, currentState.organizerId]);
+
+  useEffect(() => {
+    if (!isRestoredRef.current) {
+      return;
+    }
+
+    if (currentState.organizerId && currentState.organizerId !== userId) {
+      return;
+    }
+
+    const isEmpty =
+      !currentState.queueName && currentState.participants.length === 0;
+    if (isEmpty) return;
+
+    const payload = {
+      state: {
+        participants: currentState.participants,
+        queueName: currentState.queueName,
+        attention: currentState.attention,
+      },
+      timestamp: Date.now(),
     };
 
-    window.addEventListener("beforeunload", saveParticipants);
-    document.addEventListener("visibilitychange", handleVisibility);
+    localStorage.setItem(SCOPED_STORAGE_KEY, JSON.stringify(payload));
+  }, [currentState, userId]);
 
-    return () => {
-      window.removeEventListener("beforeunload", saveParticipants);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [dispatch]);
+  const clearStorage = () => {
+    localStorage.removeItem(SCOPED_STORAGE_KEY);
+    isRestoredRef.current = false;
+  };
+
+  return { clearStorage };
 };
